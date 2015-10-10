@@ -1,0 +1,257 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <unistd.h>
+#include <signal.h>
+#include <fcntl.h>
+#include <time.h>
+#include <math.h>
+#include <sys/types.h>
+#include <time.h>
+#include "display.h"
+#include "whac.h"
+
+#define DISPLAY_WIDTH (320)
+#define BOX_SIDE 30
+#define NUMBER_OF_BUTTONS 8 
+
+#define SW1 1
+#define SW2 2
+#define SW3 4
+#define SW4 8
+#define SW5 16
+#define SW6 32
+#define SW7 64
+#define SW8 128
+
+typedef struct{
+	color col;
+	int x, y, side;
+    int active;
+}box;
+
+//Array for the boxes and moles
+
+box boxes[NUMBER_OF_BUTTONS];
+
+int active_moles;
+int buffer, line, oflags;
+
+color mole_color = {31, 5, 31};
+color black_color = {0, 0, 0};
+color box_color = {31, 25, 31};
+
+/***************************************************************
+* FUNCTION NAME    interrupt_handler()
+*
+* DESCRIPTION:
+*
+*		Called when input is registered. Read at byte which 
+*		gives which buttons are pressed
+*
+****************************************************************/
+
+void interrupt_handler(int signum){
+	read((line), &buffer, 1);
+}
+
+/***************************************************************
+* FUNCTION NAME    driver_setup()
+*
+* DESCRIPTION:
+*
+*		Sets up the char driver by opening it and calling the 
+*		function interrupt_handler whenever a signal becomes 
+*		available
+*
+****************************************************************/
+
+void driver_setup(){
+	line = open("/dev/driver-gamepad", O_RDONLY);
+	signal(SIGIO, &interrupt_handler);
+	fcntl(line, F_SETOWN, getpid());
+	oflags = fcntl( line, F_GETFL);
+	fcntl(line, F_SETFL, oflags | FASYNC);
+}
+
+/***************************************************************
+* FUNCTION NAME    input_format
+*
+* DESCRIPTION:
+*
+*		Checks which box the player whacks 
+*
+****************************************************************/
+
+void input_format(){
+	if(buffer == 0)
+		return;
+	else if(buffer == SW1)
+		whac_compare_buttons_to_moles(0);
+	else if(buffer == SW2)
+		whac_compare_buttons_to_moles(1);
+	else if(buffer == SW3)
+		whac_compare_buttons_to_moles(2);
+	else if(buffer == SW4)
+		whac_compare_buttons_to_moles(3);
+	else if(buffer == SW5)
+		whac_compare_buttons_to_moles(4);
+	else if(buffer == SW6)
+		whac_compare_buttons_to_moles(5);
+	else if(buffer == SW7)
+		whac_compare_buttons_to_moles(6);
+	else if(buffer == SW8)
+		whac_compare_buttons_to_moles(7);
+}
+
+/***************************************************************
+* FUNCTION NAME    whac()
+*
+* DESCRIPTION:
+*
+*		Main game function. Calls necessary functions
+*
+****************************************************************/
+
+void whac(){ 
+	srand(time(NULL));
+	driver_setup();	
+	display_init();
+	display_fillScreen(black_color);
+	whac_init();
+    
+    while(1){
+        if(buffer != 0)
+           input_format();
+		nanosleep((struct timespec[]){{0, 800000000}}, NULL);
+    }
+}
+
+/***************************************************************
+* FUNCTION NAME    whac_compare_buttons_to_moles(uint8_t input)
+*
+* DESCRIPTION:
+*
+*		Checks if whacked box has any moles by checking 
+*		if box is active
+*
+****************************************************************/
+
+void whac_compare_buttons_to_moles(uint8_t input){
+    printf("Compare buttons to moles\n");
+    if(input < 0 || input >   NUMBER_OF_BUTTONS - 1){
+        printf("Invalid input\n");
+        return;
+    }else if(boxes[input].active){
+        whac_remove_mole(input);
+        whac_add_mole(input);
+        printf("You hit a mole!\n");
+    } else
+        printf("You missed a mole!\n");
+}
+
+/***************************************************************
+* FUNCTION NAME    whac_add_mole(int input)
+*
+* DESCRIPTION:
+*
+*		Summon a new mole when a previous is whacked
+*
+****************************************************************/
+
+void whac_add_mole(int input){
+    printf("Add mole\n");   
+    int pos = -1;
+    while(pos == input)
+        pos = rand() % NUMBER_OF_BUTTONS;
+    boxes[pos].active = 1;
+    display_rectangle(black_color, boxes[pos].x + 5, boxes[pos].y + 5,
+                      boxes[pos].side - 10, boxes[pos].side - 10);
+}
+
+/***************************************************************
+* FUNCTION NAME    whac_remove_mole(int pos)
+*
+* DESCRIPTION:
+*
+*		Removes mole when whacked 
+*
+****************************************************************/
+
+void whac_remove_mole(int pos){
+    printf("Remove mole\n");   
+    boxes[pos].active = 0;
+    display_rectangle(boxes[pos].col, boxes[pos].x, boxes[pos].y,
+                                      boxes[pos].side, boxes[pos].side);
+}
+
+/***************************************************************
+* FUNCTION NAME    whac_init()
+*
+* DESCRIPTION:
+*
+*		Sets up structs related to game
+*
+****************************************************************/
+
+void whac_init(){
+    int i;
+    for(i = 0; i < NUMBER_OF_BUTTONS; i++){
+        boxes[i] = (box){   .active = 0,
+                            .side = BOX_SIDE,
+                            .col = box_color};
+    }   
+ 
+    boxes[0].x = 15;
+    boxes[1].x = 75;
+    boxes[2].x = 135;
+    boxes[3].x = 195;
+  
+    boxes[0].y = 20;
+    boxes[2].y = 20;
+    boxes[1].y = 20;
+    boxes[3].y = 20;
+  
+    boxes[4].x = 15;
+    boxes[5].x = 75;
+    boxes[6].x = 135;
+    boxes[7].x = 195;
+  
+    boxes[4].y = 80;
+    boxes[5].y = 80;
+    boxes[6].y = 80;
+    boxes[7].y = 80;
+     
+    for(i = 0; i < NUMBER_OF_BUTTONS; i++){
+        display_rectangle(boxes[i].col, boxes[i].x, boxes[i].y,boxes[i].side, boxes[i].side);
+    }
+     
+    i = rand() % NUMBER_OF_BUTTONS;
+    boxes[i].active = 1;
+    printf("Random box: %d\n", i);
+    display_rectangle(black_color, boxes[i].x + 5, boxes[i].y + 5,
+                      boxes[i].side - 10, boxes[i].side - 10);
+    printf("whac_init() complete\n");
+}
+
+/***************************************************************
+* FUNCTION NAME    print_boxes()
+*
+* DESCRIPTION:
+*
+*		Test function for checking coordinates for boxes
+*
+****************************************************************/
+
+void print_boxes(){
+    int i; 
+    for(i = 0; i < NUMBER_OF_BUTTONS; i++){
+        printf("box[%d].x = %d  ", i, boxes[i].x);
+        printf("box[%d].y = %d  ", i, boxes[i].y);
+        printf("\n");
+    }
+}
+
+
+
+
